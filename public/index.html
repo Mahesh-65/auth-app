@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entra ID & App Service Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col items-center justify-center p-6">
+
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-2xl text-center">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">Azure App Service & Entra ID</h1>
+        <p class="text-gray-600 mb-6 text-sm">Full-Stack Identity Demonstration</p>
+
+        <div id="unauthenticated-section">
+            <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-6 rounded cursor-pointer">
+                Sign in with Microsoft
+            </button>
+        </div>
+
+        <div id="authenticated-section" class="hidden text-left">
+            <div class="border-b border-gray-200 pb-4 mb-4 flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800" id="user-greeting">Welcome</h2>
+                    <p class="text-sm text-gray-500" id="user-email"></p>
+                </div>
+                <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm cursor-pointer">
+                    Sign Out
+                </button>
+            </div>
+
+            <div class="mb-6 bg-blue-50 p-4 rounded border border-blue-100">
+                <h3 class="text-sm font-semibold text-blue-800 mb-2">Backend Integration</h3>
+                <button id="api-btn" class="bg-gray-800 hover:bg-gray-900 text-white py-1.5 px-4 rounded text-sm mb-2 cursor-pointer">
+                    Fetch Data from Node.js Backend
+                </button>
+                <pre id="api-response" class="bg-white p-2 rounded text-xs text-gray-700 border border-gray-200 hidden"></pre>
+            </div>
+
+            <h3 class="text-sm font-semibold text-gray-700 mb-2">Decoded ID Token Claims:</h3>
+            <pre id="token-claims" class="bg-gray-900 text-green-400 p-4 rounded text-xs overflow-x-auto max-h-48"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Update these with your Entra ID App Registration details
+        const msalConfig = {
+            auth: {
+                clientId: process.env.CLIENT_ID, 
+                authority: "https://login.microsoftonline.com/{process.env.TENANT_ID}",
+                redirectUri: window.location.origin // Automatically handles localhost vs Azure App Service URL
+            }
+        };
+
+        const myMSALObj = new msal.PublicClientApplication(msalConfig);
+        const loginRequest = { scopes: ["openid", "profile", "User.Read"] };
+
+        myMSALObj.handleRedirectPromise().then(handleResponse).catch(console.error);
+
+        function handleResponse(response) {
+            if (response !== null) {
+                showUI(response.account, response.idTokenClaims);
+            } else {
+                const accounts = myMSALObj.getAllAccounts();
+                if (accounts.length > 0) {
+                    myMSALObj.acquireTokenSilent({ ...loginRequest, account: accounts[0] })
+                        .then(res => showUI(res.account, res.idTokenClaims))
+                        .catch(console.error);
+                }
+            }
+        }
+
+        function showUI(account, claims) {
+            document.getElementById("unauthenticated-section").classList.add("hidden");
+            document.getElementById("authenticated-section").classList.remove("hidden");
+            document.getElementById("user-greeting").innerText = `Welcome, ${account.name}`;
+            document.getElementById("user-email").innerText = account.username;
+            document.getElementById("token-claims").innerText = JSON.stringify(claims, null, 2);
+        }
+
+        document.getElementById("login-btn").addEventListener("click", () => myMSALObj.loginRedirect(loginRequest));
+        document.getElementById("logout-btn").addEventListener("click", () => {
+            myMSALObj.logoutRedirect({ account: myMSALObj.getAllAccounts()[0] });
+        });
+
+        // New: Fetch data from the Node.js backend
+        document.getElementById("api-btn").addEventListener("click", async () => {
+            const responseDisplay = document.getElementById("api-response");
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+                responseDisplay.classList.remove("hidden");
+                responseDisplay.innerText = JSON.stringify(data, null, 2);
+            } catch (error) {
+                responseDisplay.classList.remove("hidden");
+                responseDisplay.innerText = "Error fetching API: " + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
